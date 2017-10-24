@@ -10,7 +10,10 @@
 #include <time.h>
 #include <signal.h>
 
+
 #include "miniproject.h"
+
+#define BUFSIZE 512
 
 int udp_init_client(struct udp_conn *udp, int port, char *ip)
 {
@@ -85,4 +88,14 @@ void timespec_add_us(struct timespec *t, long us)
 		t->tv_nsec -= 1000000000;
 		t->tv_sec += 1;
 	}
+}
+
+int main(void){
+	struct udp_conn connection;
+	char buf[BUFSIZE] = " ";
+	udp_init_client(&connection, 9999, "192.168.0.1");
+	if (udp_send(&connection, buf, strlen(buf)) < 0){ perror("Error in sendto()"); }
+
+	udp_close(&connection);
+	return 0;
 }
