@@ -1,14 +1,14 @@
 # program executable name
-TARGET = /export/nfs/root/hello2
+TARGET = /export/nfs/root/miniproject
 
 # GCC compiler
-CC = /home/student/Desktop/Ex8/buildroot-avr32-v3.0.0_TTK4147/output/staging/usr/bin/avr32-linux-gcc
+CC = /home/student/Desktop/do_not_touch/Ex8/buildroot-avr32-v3.0.0_TTK4147/output/staging/usr/bin/avr32-linux-gcc
 
 # compiler flags
 CFLAGS = -g -Wall
 
 # linker flags
-LDFLAGS = -g
+LDFLAGS = -g -pthread 
 
 # list of sources
 SOURCES = $(shell find -name "*.c")

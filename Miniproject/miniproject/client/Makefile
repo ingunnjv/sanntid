@@ -8,7 +8,7 @@ CC = /home/student/Desktop/Ex8/buildroot-avr32-v3.0.0_TTK4147/output/staging/usr
 CFLAGS = -g -Wall
 
 # linker flags
-LDFLAGS = -g
+LDFLAGS = -g -pthread 
 
 # list of sources
 SOURCES = $(shell find -name "*.c")

@@ -5,6 +5,7 @@
 
 // typedef
 typedef void (*sighandler_t)(int);
+typedef enum{false, true} bool;
 
 // structs that store the information needed for an udp connection
 struct udp_conn{
@@ -31,5 +32,11 @@ void udp_close(struct udp_conn *udp);
 int clock_nanosleep(struct timespec *next);
 
 void timespec_add_us(struct timespec *t, long us);
+
+void* udp_listener();
+
+void* PID_control();
+
+double get_double(const char *str);
 
 #endif /* MINIPROJECT_H_ */
