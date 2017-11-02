@@ -37,6 +37,11 @@ void* udp_listener();
 
 void* PID_control();
 
+void* periodic_request();
+
+void* respond_to_server();
+
 double get_double(const char *str);
+
 
 #endif /* MINIPROJECT_H_ */

@@ -14,14 +14,16 @@
 #include <ctype.h>
 
 
-#include "miniproject.h"
+#include "mini_part2.h"
 
 #define BUFSIZE 512
-sem_t sem;
+sem_t PID_sem, signal_sem;
 bool stop = false;
 double y = 0;
 struct udp_conn connection;
 pthread_mutex_t mutex;
+volatile int period_us = 5000;
+
 
 int udp_init_client(struct udp_conn *udp, int port, char *ip)
 {
@@ -98,79 +100,93 @@ void timespec_add_us(struct timespec *t, long us)
 	}
 }
 
-void* udp_listener()
+void* periodic_request()
 {
 	struct timespec next;
+	clock_gettime(CLOCK_REALTIME, &next);
+
+	while(1){
+		if (stop){ break; }
+
+		pthread_mutex_lock(&mutex);
+		if (udp_send(&connection, "GET", strlen("GET") + 1) < 0){ perror("Error in sendto()"); }
+		pthread_mutex_unlock(&mutex);
+
+		timespec_add_us(&next, period_us);
+		clock_nanosleep(&next);
+	}
+	pthread_mutex_unlock(&mutex);
+	printf("Exit periodic request\n");
+}
+
+
+void* udp_listener()
+{
+	
 	int bytes_received;
 	char recvbuf[BUFSIZE];
 	char testbuf[BUFSIZE];
 
-	clock_gettime(CLOCK_REALTIME, &next);
-
 	while(1){
-		printf("start of udp_listener\n");
 		if (stop){ break; }
 
-		pthread_mutex_lock(&mutex);
+		bytes_received = udp_receive(&connection, recvbuf, BUFSIZE);
 
-		if (udp_send(&connection, "GET", strlen("GET")+1) < 0){ perror("Error in sendto()"); }
-		//printf(udp_send(&connection, "GET", strlen("GET")+1));
-
-
-		bytes_received = udp_receive(&connection, recvbuf, strlen(recvbuf));
-		pthread_mutex_unlock(&mutex);
-		printf("bytes received = %d\n", bytes_received);
 		if (bytes_received > 0){
-			printf("5\n");
 			memcpy(testbuf, recvbuf, strlen("GET_ACK:"));
-			if (testbuf[strlen("GET_ACK:")+1] == "GET_ACK:"){
+			if (testbuf[0] == 'G'){
 				y = get_double(recvbuf);
-				printf("y: %f", y);
-				//sem_post(&sem);
+				sem_post(&PID_sem);
+			}
+			if (testbuf[0] == 'S'){
+				sem_post(&signal_sem);
 			}
 		}
-		sem_post(&sem);
-		printf("6\n");
-		timespec_add_us(&next, 5000);
-		clock_nanosleep(&next);
-		printf("7\n");
 	}
+	sem_post(&signal_sem);
+	sem_post(&PID_sem);
+	printf("Exit udp listener\n");
 }
 
-void* udp_listener_()
-{
-
-
-	while(1){
-		printf("Hei\n");
-	}
-}
 
 void* PID_control()
 {
 	char sendbuf[64];
-	double error;
+	double error = 0.0;
 	double reference = 1.0;
-	double integral;
-	double u;
+	double integral = 0.0;
+	double u = 0.0;
 	int Kp = 10;
 	int Ki = 800;
-	int period = 0.0023;
+	double period_s = period_us/(1000.0*1000.0);
 
 	while(1){
-		printf("start PID\n");
 		if (stop){ break; }
-		sem_wait(&sem);
+		sem_wait(&PID_sem);
 
 		error = reference - y;
-		integral = integral + (error*period);
+		integral = integral + (error*period_s);
 		u = Kp*error + Ki*integral;
 		snprintf(sendbuf, sizeof sendbuf, "SET:%f", u);
 		pthread_mutex_lock(&mutex);
 		if (udp_send(&connection, sendbuf, strlen(sendbuf)+1) < 0){ perror("Error in sendto()"); }
 		pthread_mutex_unlock(&mutex);
 	}
+	printf("Exit PID controller\n");
 }
+
+
+void* respond_to_server()
+{
+	while(1){
+		if (stop){ break; }
+		sem_wait(&signal_sem);
+		pthread_mutex_lock(&mutex);
+		if (udp_send(&connection, "SIGNAL_ACK", strlen("SIGNAL_ACK")+1) < 0){ perror("Error in sendto()"); }
+		pthread_mutex_unlock(&mutex);
+	}
+	printf("Exit signal responder\n");
+} 
 
 double get_double(const char *str)
 {
@@ -195,28 +211,34 @@ int main(void){
 	{
 		perror("mutex initialization");
 	}
-	if (sem_init(&sem, 0, 1) != 0)
+	if (sem_init(&PID_sem, 0, 1) != 0)
+	{
+		perror("semaphore initialization");
+	}
+	if (sem_init(&signal_sem, 0, 1) != 0)
 	{
 		perror("semaphore initialization");
 	}
 
 
-	pthread_t udp_listener_thread, PID_control_thread;
+	pthread_t udp_listener_thread, PID_control_thread, signal_responder_thread, periodic_request_thread;
 	pthread_create(&udp_listener_thread, NULL, udp_listener, NULL);
-
 	pthread_create(&PID_control_thread, NULL, PID_control, NULL);
-
-
+	pthread_create(&signal_responder_thread, NULL, respond_to_server, NULL);
+	pthread_create(&periodic_request_thread, NULL, periodic_request, NULL);
 
 	usleep(500*1000);
-
 	stop = true;
 	if (udp_send(&connection, "STOP", strlen("STOP")) < 0){ perror("Error in sendto()"); }
 
-	
+	pthread_join(periodic_request_thread, NULL);
 	pthread_join(udp_listener_thread, NULL);
 	pthread_join(PID_control_thread, NULL);
+	pthread_join(signal_responder_thread, NULL);
+	
 	pthread_mutex_destroy(&mutex);
+	sem_destroy(&PID_sem);
+	sem_destroy(&signal_sem);
 	udp_close(&connection);
 
 	return 0;
